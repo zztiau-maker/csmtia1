@@ -1,0 +1,676 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>名單匯入清理工具｜Hahow for Business CSM</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700;900&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+  :root{
+    --bg:#F6F7F5;--surface:#FFFFFF;--ink:#1C1F1A;--muted:#6B6F66;
+    --line:#DEE1D8;--line-strong:#C3C7BB;
+    --brand:#FFC23C;--brand-ink:#5A3E00;
+    --error:#C73E2E;--error-bg:#FBE9E6;
+    --warn:#A86A14;--warn-bg:#FBF1DE;
+    --ok:#2F7D52;--ok-bg:#E8F4ED;
+    --radius:10px;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:'Noto Sans TC',sans-serif;font-size:14px;line-height:1.5;}
+  .mono{font-family:'IBM Plex Mono','Noto Sans TC',monospace;}
+
+  header.topbar{background:var(--ink);color:#fff;padding:18px 24px;display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;}
+  header.topbar .title-block{display:flex;flex-direction:column;gap:2px;}
+  header.topbar .eyebrow{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--brand);font-weight:700;}
+  header.topbar h1{margin:0;font-size:20px;font-weight:900;}
+  header.topbar .sub{color:#C9CCC2;font-size:12.5px;}
+
+  .wrap{max-width:1480px;margin:0 auto;padding:20px 24px 60px;}
+
+  .panel{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:18px 20px;margin-bottom:16px;}
+  .panel h2{margin:0 0 12px;font-size:13px;font-weight:700;letter-spacing:.04em;color:var(--muted);text-transform:uppercase;}
+
+  /* Upload */
+  #dropzone{border:2px dashed var(--line-strong);border-radius:var(--radius);padding:34px 20px;text-align:center;cursor:pointer;transition:border-color .15s,background .15s;}
+  #dropzone.drag{border-color:var(--brand);background:#FFF8E8;}
+  #dropzone p{margin:4px 0;}
+  #dropzone .big{font-size:15px;font-weight:700;}
+  #dropzone .small{font-size:12.5px;color:var(--muted);}
+  #fileInput{display:none;}
+  .filename-pill{display:inline-flex;align-items:center;gap:8px;background:#EFF1EA;border:1px solid var(--line);border-radius:999px;padding:5px 12px;font-size:12.5px;margin-top:10px;}
+
+  /* Column Mapping */
+  .mapping-grid{display:grid;grid-template-columns:1fr 36px 1fr 180px;gap:0;border:1px solid var(--line);border-radius:var(--radius);overflow:hidden;}
+  .mapping-header{background:#222420;color:#fff;font-size:11.5px;font-weight:700;padding:9px 12px;letter-spacing:.03em;}
+  .mapping-row{display:contents;}
+  .mapping-row > div{padding:9px 12px;border-bottom:1px solid var(--line);background:#fff;display:flex;align-items:center;font-size:13px;}
+  .mapping-row:last-child > div{border-bottom:none;}
+  .mapping-row > div:nth-child(2){justify-content:center;color:var(--muted);font-size:18px;background:#FAFAF7;}
+  .mapping-row > div:nth-child(3){background:#FAFAF7;}
+  .src-col{font-weight:600;}
+  .src-preview{font-size:11.5px;color:var(--muted);font-family:'IBM Plex Mono',monospace;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:260px;}
+  .auto-badge{display:inline-block;font-size:10px;background:var(--ok-bg);color:var(--ok);border-radius:4px;padding:1px 5px;margin-left:6px;font-weight:600;}
+  .map-select{width:100%;padding:7px 8px;border:1px solid var(--line-strong);border-radius:7px;background:#fff;font-family:inherit;font-size:13px;color:var(--ink);}
+  .map-select.mapped{border-color:var(--ok);color:var(--ok);font-weight:600;}
+  .map-select.skip{border-color:var(--line);color:var(--muted);}
+  .mapping-actions{display:flex;align-items:center;gap:12px;margin-top:14px;flex-wrap:wrap;}
+  .unmapped-warn{font-size:12.5px;color:var(--warn);display:none;}
+  .unmapped-warn.show{display:block;}
+
+  /* Stats */
+  .stats{display:flex;flex-wrap:wrap;gap:10px;}
+  .stat{flex:1 1 130px;background:#FBFBF9;border:1px solid var(--line);border-radius:8px;padding:10px 14px;}
+  .stat .num{font-size:22px;font-weight:900;font-family:'IBM Plex Mono',monospace;}
+  .stat .label{font-size:11.5px;color:var(--muted);}
+  .stat.error .num{color:var(--error);}
+  .stat.warn .num{color:var(--warn);}
+  .stat.ok .num{color:var(--ok);}
+
+  /* Controls */
+  .controls{display:flex;flex-wrap:wrap;gap:10px;align-items:center;}
+  select,button,input[type=text]{font-family:inherit;font-size:13px;}
+  select{padding:8px 10px;border:1px solid var(--line-strong);border-radius:7px;background:#fff;color:var(--ink);}
+  button{padding:8px 14px;border-radius:7px;border:1px solid var(--line-strong);background:#fff;cursor:pointer;font-weight:600;color:var(--ink);transition:background .12s,border-color .12s;}
+  button:hover{border-color:var(--ink);}
+  button.primary{background:var(--ink);color:#fff;border-color:var(--ink);}
+  button.primary:hover{background:#000;}
+  button.brand{background:var(--brand);border-color:var(--brand);color:var(--brand-ink);}
+  button.brand:hover{filter:brightness(0.95);}
+  button:disabled{opacity:.4;cursor:not-allowed;}
+  label.inline{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--muted);cursor:pointer;}
+
+  .legend{display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:var(--muted);margin-top:10px;}
+  .legend span{display:inline-flex;align-items:center;gap:5px;}
+  .dot{width:9px;height:9px;border-radius:50%;display:inline-block;}
+  .dot.error{background:var(--error);}
+  .dot.warn{background:var(--warn);}
+  .dot.ok{background:var(--ok);}
+
+  /* Table */
+  .table-scroll{overflow:auto;max-height:62vh;border:1px solid var(--line);border-radius:var(--radius);background:#fff;}
+  table{border-collapse:collapse;width:100%;min-width:1400px;}
+  thead th{position:sticky;top:0;z-index:2;background:#222420;color:#fff;text-align:left;font-size:11.5px;letter-spacing:.03em;padding:9px 10px;border-right:1px solid #3a3d36;white-space:nowrap;}
+  thead th.req::after{content:" *";color:var(--brand);}
+  tbody td{border-bottom:1px solid var(--line);border-right:1px solid #EEF0EA;padding:6px 10px;vertical-align:top;font-size:12.8px;}
+  tbody tr:hover{background:#FAFAF7;}
+  tbody tr.row-error{background:var(--error-bg);}
+  tbody tr.row-error:hover{background:#F7DEDA;}
+  tbody tr.row-warn{background:var(--warn-bg);}
+  tbody tr.row-warn:hover{background:#F8EAC8;}
+  tbody tr.row-disabled{opacity:.55;}
+  td.idx{font-family:'IBM Plex Mono',monospace;color:var(--muted);font-size:11.5px;text-align:right;padding-right:8px;width:38px;}
+  td.status{width:30px;text-align:center;cursor:default;}
+  .badge{font-size:14px;}
+  .val{display:inline-block;min-width:40px;outline:none;border-radius:4px;padding:1px 3px;}
+  .val:focus{background:#FFF6DC;box-shadow:0 0 0 2px var(--brand);}
+  td.suggest{background:#F4FAF6;min-width:160px;}
+  td.suggest .sugtext{font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--ok);}
+  td.suggest button{margin-top:4px;padding:2px 8px;font-size:11px;border-radius:5px;}
+  td.suggest .same{color:var(--muted);font-size:11.5px;}
+  .empty-state{padding:60px 20px;text-align:center;color:var(--muted);}
+
+  footer.actions{display:flex;justify-content:space-between;align-items:center;margin-top:14px;flex-wrap:wrap;gap:10px;}
+  .hint{font-size:12px;color:var(--muted);max-width:640px;}
+  .toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:var(--ink);color:#fff;padding:10px 18px;border-radius:8px;font-size:13px;opacity:0;pointer-events:none;transition:opacity .2s;z-index:50;}
+  .toast.show{opacity:1;}
+
+  .step-tag{display:inline-block;font-size:10.5px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;background:var(--brand);color:var(--brand-ink);border-radius:5px;padding:2px 7px;margin-right:6px;vertical-align:middle;}
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="title-block">
+    <span class="eyebrow">Hahow for Business · CSM Tool</span>
+    <h1>名單匯入清理工具</h1>
+    <span class="sub">上傳客戶 Excel → 對應欄位 → 自動偵測格式問題 → 下載可匯入檔案</span>
+  </div>
+</header>
+
+<div class="wrap">
+
+  <!-- Step 1: Upload -->
+  <div class="panel" id="uploadPanel">
+    <h2><span class="step-tag">Step 1</span>上傳客戶名單</h2>
+    <div id="dropzone">
+      <p class="big">📂 拖曳 Excel 檔案到這裡，或點擊選擇檔案</p>
+      <p class="small">支援 .xlsx / .xls，欄位標題不符沒關係，下一步可手動對應</p>
+      <div id="fileNameDisplay"></div>
+    </div>
+    <input type="file" id="fileInput" accept=".xlsx,.xls">
+  </div>
+
+  <!-- Step 2: Column Mapping -->
+  <div class="panel" id="mappingPanel" style="display:none;">
+    <h2><span class="step-tag">Step 2</span>欄位對應</h2>
+    <p style="margin:0 0 14px;font-size:13px;color:var(--muted);">
+      工具已自動偵測並預先對應檔案欄位。請確認每個來源欄位對應到正確的系統欄位，不需要的欄位選「略過（不匯入）」。
+      帶有 <span style="background:var(--ok-bg);color:var(--ok);font-size:10.5px;font-weight:700;border-radius:4px;padding:1px 5px;">自動對應</span> 標記的表示工具自動識別成功。
+    </p>
+    <div class="mapping-grid" id="mappingGrid">
+      <div class="mapping-header">來源欄位（客戶檔案）</div>
+      <div class="mapping-header" style="text-align:center;">→</div>
+      <div class="mapping-header">預覽值（前 3 筆）</div>
+      <div class="mapping-header">對應到系統欄位</div>
+    </div>
+    <div class="mapping-actions">
+      <button class="primary" id="confirmMappingBtn">確認對應，開始檢查 →</button>
+      <span class="unmapped-warn" id="unmappedWarn">⚠ 仍有必填欄位（姓名、信箱、職稱、密碼）尚未對應，確認後這些欄位會是空白。</span>
+    </div>
+  </div>
+
+  <!-- Step 3+: Workspace -->
+  <div id="workspace" style="display:none;">
+
+    <div class="panel">
+      <h2><span class="step-tag">Step 3</span>檢查總覽</h2>
+      <div class="stats" id="statsRow"></div>
+      <div style="margin-top:12px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+        <button id="remapBtn" style="font-size:12px;padding:6px 12px;">← 重新調整欄位對應</button>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2><span class="step-tag">Step 4</span>姓名格式化規則</h2>
+      <div class="controls">
+        <select id="namePreset">
+          <option value="zh_priority">中文優先（中文亂碼時自動改留英文）</option>
+          <option value="zh_only">僅保留中文</option>
+          <option value="en_only">僅保留英文</option>
+          <option value="clean_symbols">僅清除特殊符號／全形空格（中英文都保留）</option>
+        </select>
+        <button class="brand" id="applyPresetBtn">整批套用此規則</button>
+        <span class="hint" style="margin-left:6px;">套用後可在下方表格個別列手動微調，工具不會覆蓋你手動修改過的內容。</span>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2><span class="step-tag">Step 5</span>名單明細（可直接點欄位修改）</h2>
+      <div class="controls" style="margin-bottom:12px;">
+        <label class="inline"><input type="checkbox" id="onlyIssues"> 只顯示有問題的列</label>
+        <label class="inline"><input type="checkbox" id="onlyDisabled"> 只顯示已停用列</label>
+        <span class="legend">
+          <span><i class="dot error"></i>必填缺漏／格式錯誤（會匯入失敗）</span>
+          <span><i class="dot warn"></i>建議確認</span>
+          <span><i class="dot ok"></i>通過</span>
+        </span>
+      </div>
+      <div class="table-scroll">
+        <table>
+          <thead><tr id="theadRow"></tr></thead>
+          <tbody id="tbody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <footer class="actions">
+      <div class="hint">「下載匯入檔」只輸出系統規定欄位，可直接上傳；「下載檢查報表」額外附上每列問題說明，方便存查或回覆客戶。</div>
+      <div style="display:flex;gap:10px;">
+        <button id="exportReportBtn">下載檢查報表 (.xlsx)</button>
+        <button class="primary" id="exportImportBtn">下載匯入檔 (.xlsx)</button>
+      </div>
+    </footer>
+
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+/* ===================== 範本 Base64 ===================== */
+const TEMPLATE_B64 = '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';
+const TEMPLATE_KEYS = ['name', 'nickname', 'birthdate', 'empId', 'tags', 'email', 'title', 'dept', 'gender', 'password'];
+
+/* ===================== 欄位設定 ===================== */
+const FIELDS = [
+  {key:'name',     label:'姓名',         required:true,  width:130},
+  {key:'nickname', label:'暱稱',         required:false, width:100},
+  {key:'birthdate',label:'出生年月日',    required:false, width:100},
+  {key:'empId',    label:'員工/學員編號', required:false, width:120},
+  {key:'tags',     label:'備註標籤',      required:false, width:140},
+  {key:'email',    label:'信箱',         required:true,  width:170},
+  {key:'title',    label:'職稱',         required:true,  width:110},
+  {key:'dept',     label:'部門/單位',     required:false, width:150},
+  {key:'gender',   label:'性別',         required:false, width:90},
+  {key:'password', label:'密碼',         required:true,  width:110},
+  {key:'status',   label:'帳號啟用狀態',  required:false, width:100},
+];
+const REQUIRED_KEYS = FIELDS.filter(f=>f.required).map(f=>f.key);
+
+// 關鍵字 → 系統欄位 key 的模糊對應清單
+const HEADER_ALIASES = {
+  name:['姓名','名字','name','fullname','full_name','full name','員工姓名','使用者姓名'],
+  nickname:['暱稱','nickname','nick','別名'],
+  birthdate:['出生年月日','生日','birthday','birth','birthdate','出生日期','出生年份'],
+  empId:['員工/學員編號','員工編號','學員編號','工號','empid','emp_id','employee id','employeeid','員編','學號','userid'],
+  tags:['備註標籤','標籤','tags','tag','備註','memo','note','notes','remark'],
+  email:['信箱','電子郵件','email','e-mail','mail','電郵','帳號','account'],
+  title:['職稱','title','job title','jobtitle','position','職位','頭銜'],
+  dept:['部門/單位','部門','單位','department','dept','division','組織','team'],
+  gender:['性別','gender','sex'],
+  password:['密碼','password','pw','pass'],
+  status:['帳號啟用狀態','啟用狀態','帳號狀態','status','active','enabled','啟用'],
+};
+
+const NAME_CHAR_RE = /^[\p{L}\p{N}\s.\-()（）_]{1,32}$/u;
+const ID_CHAR_RE   = /^[\p{L}\p{N}\s.\-()（）_]{1,64}$/u;
+const SEG_CHAR_RE  = /^[\p{L}\p{N}\s.\-()（）_]{1,32}$/u;
+const EMAIL_RE     = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const PASSWORD_RE  = /^(?=.*[A-Za-z])(?=.*\d).{8,}$/;
+const GENDER_OK    = ['男','女','多元性別'];
+
+let rawHeaders  = [];   // 客戶檔案原始欄位標題陣列
+let rawAoa      = [];   // 原始資料 (array of arrays, 不含標題列)
+let columnMap   = {};   // { srcColIndex: 'systemKey' | '__skip__' }
+let rows        = [];   // 處理後的 row 物件
+
+/* ===================== 工具 ===================== */
+function escapeHtml(s){
+  return (s||'').toString().replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+function normSpaces(s){ return (s||'').toString().replace(/\u3000/g,' ').replace(/\s+/g,' ').trim(); }
+function isLikelyGarbled(s){
+  if(!s) return false;
+  if(/\uFFFD/.test(s)) return true;
+  if(/[\uE000-\uF8FF]/.test(s)) return true;
+  if(/[\u00C0-\u00FF]{2,}/.test(s)) return true;
+  if(/[ÃÂåäæ¥¦§©]{2,}/.test(s)) return true;
+  return false;
+}
+function extractCJK(s){ const m=(s||'').match(/[\u4e00-\u9fff\u3400-\u4dbf]/g); return m?m.join(''):'';}
+function extractLatin(s){ const m=(s||'').match(/[A-Za-z.\-' ]/g); return m?m.join('').replace(/\s+/g,' ').trim():'';}
+function stripDisallowed(s){
+  // 1. 清除不允許的符號，保留中英文、數字、空白、.-()_
+  s=normSpaces(s);
+  const out=[];for(const ch of s){if(/[\p{L}\p{N}\s.\-()（）_]/u.test(ch))out.push(ch);}
+  s=out.join('').replace(/\s+/g,' ').trim();
+  // 2. 移除「中文字之間」的空格（兩側都是 CJK 字元才移除），英文字詞間的空格保留
+  const CJK=/[\u4e00-\u9fff\u3400-\u4dbf\uf900-\ufaff]/;
+  let prev=s;
+  do {
+    prev=s;
+    s=s.replace(new RegExp('('+CJK.source+')\\s+('+CJK.source+')','g'),'$1$2');
+  } while(s!==prev);
+  return s;
+}
+function applyNamePresetFn(preset,raw){
+  const s=normSpaces(raw); if(!s) return s;
+  if(preset==='zh_only'){const cjk=extractCJK(s);return cjk||s;}
+  if(preset==='en_only'){const lat=extractLatin(s);return lat||s;}
+  if(preset==='clean_symbols') return stripDisallowed(s);
+  // zh_priority
+  const cjk=extractCJK(s);
+  if(cjk&&!isLikelyGarbled(cjk)&&!isLikelyGarbled(s)) return cjk;
+  const lat=extractLatin(s); return lat||stripDisallowed(s)||s;
+}
+function excelSerialToDateStr(n){
+  try{const d=XLSX.SSF.parse_date_code(n);return d?`${d.y}/${d.m}/${d.d}`:'';} catch{return '';}
+}
+function addIssue(rowObj,field,level,msg){
+  if(!rowObj.issues[field]) rowObj.issues[field]=[];
+  rowObj.issues[field].push({level,msg});
+}
+function fieldLabel(key){const f=FIELDS.find(f=>f.key===key);return f?f.label:key;}
+
+/* ===================== 自動偵測欄位 ===================== */
+function autoDetectKey(header){
+  const h = header.toLowerCase().replace(/[\s\-_]/g,'');
+  for(const key in HEADER_ALIASES){
+    for(const alias of HEADER_ALIASES[key]){
+      const a = alias.toLowerCase().replace(/[\s\-_]/g,'');
+      if(h===a || h.includes(a) || a.includes(h)) return key;
+    }
+  }
+  return '__skip__';
+}
+
+/* ===================== 讀檔 ===================== */
+function handleFile(file){
+  const reader = new FileReader();
+  reader.onload = function(e){
+    try{
+      const data = new Uint8Array(e.target.result);
+      const wb = XLSX.read(data,{type:'array',cellDates:false});
+      const sheet = wb.Sheets[wb.SheetNames[0]];
+      const aoa = XLSX.utils.sheet_to_json(sheet,{header:1,raw:true,defval:''});
+      if(!aoa.length){toast('檔案是空的，請確認內容');return;}
+      rawHeaders = aoa[0].map(h=>(h||'').toString().trim());
+      rawAoa = aoa.slice(1).filter(row=>row.some(c=>c!==''&&c!=null));
+      if(!rawAoa.length){toast('沒有讀到任何資料列');return;}
+      // 自動對應
+      columnMap = {};
+      const usedKeys = new Set();
+      rawHeaders.forEach((h,ci)=>{
+        const key = autoDetectKey(h);
+        if(key!=='__skip__' && usedKeys.has(key)){
+          columnMap[ci]='__skip__'; // 同一個 key 重複時後者略過，讓使用者手動選
+        } else {
+          columnMap[ci]=key;
+          if(key!=='__skip__') usedKeys.add(key);
+        }
+      });
+      document.getElementById('fileNameDisplay').innerHTML =
+        `<div class="filename-pill">📄 ${escapeHtml(file.name)} ・ 共 ${rawAoa.length} 筆 ・ ${rawHeaders.length} 個來源欄位</div>`;
+      renderMappingPanel();
+      document.getElementById('mappingPanel').style.display='block';
+      document.getElementById('workspace').style.display='none';
+    }catch(err){
+      console.error(err);
+      toast('讀取失敗，請確認檔案格式是否為 .xlsx / .xls');
+    }
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+/* ===================== 欄位對應 UI ===================== */
+function renderMappingPanel(){
+  const grid = document.getElementById('mappingGrid');
+  // 保留4個 header div，清掉其他
+  const headers = Array.from(grid.children).slice(0,4);
+  grid.innerHTML='';
+  headers.forEach(h=>grid.appendChild(h));
+
+  // 系統欄位選項
+  const sysOptions = `<option value="__skip__">— 略過（不匯入）—</option>`
+    + FIELDS.map(f=>`<option value="${f.key}">${f.label}${f.required?' *':''}</option>`).join('');
+
+  rawHeaders.forEach((h,ci)=>{
+    // 預覽前 3 筆
+    const preview = rawAoa.slice(0,3).map(row=>{
+      let v = row[ci];
+      if(v==null||v==='') return '(空)';
+      return String(v).slice(0,20);
+    }).join(' / ');
+
+    const detectedKey = columnMap[ci];
+    const isAuto = detectedKey !== '__skip__';
+
+    const d1=document.createElement('div');
+    d1.innerHTML=`<div><span class="src-col">${escapeHtml(h)}</span>${isAuto?`<span class="auto-badge">自動對應</span>`:''}</div>`;
+
+    const d2=document.createElement('div'); d2.textContent='→';
+
+    const d3=document.createElement('div');
+    d3.innerHTML=`<span class="src-preview">${escapeHtml(preview)}</span>`;
+
+    const d4=document.createElement('div');
+    const sel=document.createElement('select');
+    sel.className='map-select '+(isAuto?'mapped':'skip');
+    sel.innerHTML=sysOptions;
+    sel.value=detectedKey;
+    sel.dataset.col=ci;
+    sel.addEventListener('change',function(){
+      columnMap[+this.dataset.col]=this.value;
+      this.className='map-select '+(this.value==='__skip__'?'skip':'mapped');
+      checkUnmappedRequired();
+    });
+    d4.appendChild(sel);
+
+    [d1,d2,d3,d4].forEach(d=>{ d.classList?null:null; grid.appendChild(d); });
+    grid.append(d1,d2,d3,d4);
+  });
+  checkUnmappedRequired();
+}
+
+function checkUnmappedRequired(){
+  const mappedKeys = new Set(Object.values(columnMap).filter(v=>v!=='__skip__'));
+  const missing = REQUIRED_KEYS.filter(k=>!mappedKeys.has(k));
+  const warn = document.getElementById('unmappedWarn');
+  if(missing.length){
+    warn.textContent = `⚠ 必填欄位「${missing.map(fieldLabel).join('、')}」尚未對應，確認後這些欄位將為空白，可能導致匯入失敗。`;
+    warn.classList.add('show');
+  } else {
+    warn.classList.remove('show');
+  }
+}
+
+/* ===================== 套用對應、解析資料 ===================== */
+function applyMappingAndBuild(){
+  // 檢查同一 key 是否被對應超過一次
+  const keyCount = {};
+  Object.values(columnMap).forEach(k=>{ if(k!=='__skip__') keyCount[k]=(keyCount[k]||0)+1; });
+  const dupes = Object.entries(keyCount).filter(([,c])=>c>1).map(([k])=>fieldLabel(k));
+  if(dupes.length){
+    if(!confirm(`「${dupes.join('、')}」被對應到超過一個來源欄位，後對應的欄位值會覆蓋前者。是否繼續？`)) return false;
+  }
+
+  rows = [];
+  rawAoa.forEach(line=>{
+    const orig = {}, val = {};
+    Object.entries(columnMap).forEach(([ci,key])=>{
+      if(key==='__skip__') return;
+      let cell = line[+ci];
+      let asText = (cell==null)?'':cell;
+      if(typeof cell==='number'){
+        if(key==='birthdate') asText = excelSerialToDateStr(cell)||String(cell);
+        else asText = String(cell);
+      }
+      // 若已有值（多欄對應同 key），附加（空格隔開，以 email 類除外）
+      const cur = orig[key]||'';
+      if(cur && asText){
+        orig[key] = key==='email'?asText.toString():cur+' '+asText.toString();
+      } else {
+        orig[key] = asText.toString();
+      }
+      val[key] = (orig[key]||'').trim();
+    });
+    rows.push({orig, val, issues:{}, rowLevel:'ok', nameSuggestion:''});
+  });
+  return true;
+}
+
+/* ===================== 驗證 ===================== */
+function validateAll(){
+  rows.forEach(row=>{row.issues={};});
+  const emailMap={}, empIdMap={};
+  rows.forEach((row,i)=>{
+    const v=row.val;
+    if(v.email)(emailMap[v.email.toLowerCase()]||=[]).push(i);
+    if(v.empId)(empIdMap[v.empId]||=[]).push(i);
+  });
+  rows.forEach((row,i)=>{
+    const v=row.val;
+    const disabled=(v.status||'').includes('停用');
+    ['name','email','title','password'].forEach(f=>{
+      if(!v[f]) addIssue(row,f,'error',`必填欄位「${fieldLabel(f)}」未填寫，會導致整列匯入失敗`);
+    });
+    if(v.name){
+      if(!NAME_CHAR_RE.test(v.name)) addIssue(row,'name','error','姓名格式不符（限 1-32 字元，只能包含中英文、數字、.-()_及空白）');
+      if(isLikelyGarbled(v.name)) addIssue(row,'name','warn','偵測到可能是亂碼，建議套用姓名規則或手動確認');
+      if(/\u3000/.test(row.orig.name||'')) addIssue(row,'name','warn','原始內容含全形空格，建議套用姓名規則清除');
+    }
+    if(v.empId&&!ID_CHAR_RE.test(v.empId)) addIssue(row,'empId','error','員編格式不符（限 1-64 字元，只能包含中英文、數字、.-()_及空白）');
+    if(v.title&&!SEG_CHAR_RE.test(v.title)) addIssue(row,'title','error','職稱格式不符（限 1-32 字元，只能包含中英文、數字、.-()_及空白）');
+    if(v.email&&!EMAIL_RE.test(v.email)) addIssue(row,'email','error','信箱格式不正確');
+    if(v.email&&emailMap[v.email.toLowerCase()].length>1)
+      addIssue(row,'email','error',`信箱重複（共 ${emailMap[v.email.toLowerCase()].length} 次，列 ${emailMap[v.email.toLowerCase()].map(x=>x+2).join(', ')}），系統會判斷錯誤`);
+    if(v.empId&&empIdMap[v.empId].length>1)
+      addIssue(row,'empId','warn',`員編重複（共 ${empIdMap[v.empId].length} 次，列 ${empIdMap[v.empId].map(x=>x+2).join(', ')}）`);
+    if(v.password&&!PASSWORD_RE.test(v.password)) addIssue(row,'password','error','密碼需為英文字母＋數字組合，長度至少 8 個字元');
+    if(v.birthdate&&!/^\d{4}\/\d{1,2}\/\d{1,2}$/.test(v.birthdate))
+      addIssue(row,'birthdate','error','日期格式需為 YYYY/M/D，例如 2021/1/1');
+    if(v.gender&&!GENDER_OK.includes(v.gender)) addIssue(row,'gender','error','性別請填寫「男」、「女」或「多元性別」');
+    if(v.dept){
+      v.dept.split(',').map(s=>s.trim()).filter(Boolean).forEach(g=>{
+        const segs=g.split('/').map(s=>s.trim()).filter(Boolean);
+        if(segs.length>6) addIssue(row,'dept','error',`部門層級超過 6 層：「${g}」`);
+        segs.forEach(seg=>{ if(!SEG_CHAR_RE.test(seg)) addIssue(row,'dept','error',`部門名稱格式不符：「${seg}」`); });
+      });
+    }
+    if(v.tags){
+      if(/\n/.test(v.tags)) addIssue(row,'tags','warn','標籤內容含換行');
+      const seen=new Set(),dups=[];
+      v.tags.split(',').map(t=>t.trim()).filter(Boolean).forEach(t=>{
+        if(t.length>255) addIssue(row,'tags','error',`單一標籤超過 255 字元`);
+        if(seen.has(t)) dups.push(t); else seen.add(t);
+      });
+      if(dups.length) addIssue(row,'tags','warn',`含重複標籤（匯入時自動去除）：${[...new Set(dups)].join('、')}`);
+    }
+    if(disabled) addIssue(row,'status','warn','此列為「已停用」，匯入時系統會自動略過');
+    const preset=document.getElementById('namePreset')?document.getElementById('namePreset').value:'zh_priority';
+    row.nameSuggestion=applyNamePresetFn(preset,row.orig.name||v.name||'');
+    const allIssues=Object.values(row.issues).flat();
+    if(allIssues.some(i=>i.level==='error')) row.rowLevel='error';
+    else if(allIssues.some(i=>i.level==='warn')) row.rowLevel='warn';
+    else row.rowLevel='ok';
+    row.disabled=disabled;
+  });
+}
+
+/* ===================== 渲染表格 ===================== */
+function buildTableHead(){
+  const tr=document.getElementById('theadRow');
+  let html=`<th style="width:38px;">#</th><th style="width:30px;">狀態</th>`;
+  FIELDS.forEach(f=>{ html+=`<th class="${f.required?'req':''}" style="width:${f.width}px;">${f.label}</th>`; });
+  html+=`<th style="width:170px;">姓名建議值</th>`;
+  tr.innerHTML=html;
+}
+function badgeFor(level){
+  if(level==='error') return '<span class="badge" title="必填缺漏或格式錯誤">🔴</span>';
+  if(level==='warn')  return '<span class="badge" title="建議確認">🟡</span>';
+  return '<span class="badge" title="檢查通過">🟢</span>';
+}
+function renderTable(){
+  const tbody=document.getElementById('tbody');
+  const onlyIssues=document.getElementById('onlyIssues').checked;
+  const onlyDisabled=document.getElementById('onlyDisabled').checked;
+  let html='';
+  rows.forEach((row,i)=>{
+    if(onlyIssues&&row.rowLevel==='ok') return;
+    if(onlyDisabled&&!row.disabled) return;
+    const rowClass=(row.rowLevel==='error'?'row-error':row.rowLevel==='warn'?'row-warn':'')+(row.disabled?' row-disabled':'');
+    html+=`<tr class="${rowClass}" data-row="${i}">`;
+    html+=`<td class="idx">${i+2}</td>`;
+    html+=`<td class="status">${badgeFor(row.rowLevel)}</td>`;
+    FIELDS.forEach(f=>{
+      const v=row.val[f.key]??'';
+      const issues=row.issues[f.key]||[];
+      const title=issues.map(x=>x.msg).join('\n');
+      html+=`<td title="${escapeHtml(title)}"><span class="val" contenteditable="true" data-row="${i}" data-field="${f.key}">${escapeHtml(v)}</span></td>`;
+    });
+    const same=row.nameSuggestion===row.val.name;
+    html+=`<td class="suggest">`;
+    if(same){ html+=`<span class="same">與目前值相同</span>`; }
+    else { html+=`<div class="sugtext">${escapeHtml(row.nameSuggestion)}</div><button data-apply-row="${i}">套用</button>`; }
+    html+=`</td></tr>`;
+  });
+  if(!html) html=`<tr><td colspan="${FIELDS.length+3}" class="empty-state">目前沒有符合篩選條件的列</td></tr>`;
+  tbody.innerHTML=html;
+}
+function renderStats(){
+  const total=rows.length;
+  const errorRows=rows.filter(r=>r.rowLevel==='error').length;
+  const warnRows=rows.filter(r=>r.rowLevel==='warn').length;
+  const okRows=total-errorRows-warnRows;
+  const disabledRows=rows.filter(r=>r.disabled).length;
+  document.getElementById('statsRow').innerHTML=`
+    <div class="stat"><div class="num mono">${total}</div><div class="label">總筆數</div></div>
+    <div class="stat error"><div class="num mono">${errorRows}</div><div class="label">無法匯入（需修正）</div></div>
+    <div class="stat warn"><div class="num mono">${warnRows}</div><div class="label">建議確認</div></div>
+    <div class="stat ok"><div class="num mono">${okRows}</div><div class="label">檢查通過</div></div>
+    <div class="stat"><div class="num mono">${disabledRows}</div><div class="label">已停用</div></div>`;
+}
+
+/* ===================== 事件 ===================== */
+document.getElementById('dropzone').addEventListener('click',()=>document.getElementById('fileInput').click());
+document.getElementById('fileInput').addEventListener('change',e=>{ if(e.target.files[0]) handleFile(e.target.files[0]); });
+['dragover','dragenter'].forEach(ev=>document.getElementById('dropzone').addEventListener(ev,e=>{e.preventDefault();e.currentTarget.classList.add('drag');}));
+['dragleave','drop'].forEach(ev=>document.getElementById('dropzone').addEventListener(ev,e=>{e.preventDefault();e.currentTarget.classList.remove('drag');}));
+document.getElementById('dropzone').addEventListener('drop',e=>{ if(e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]); });
+
+document.getElementById('confirmMappingBtn').addEventListener('click',()=>{
+  if(!applyMappingAndBuild()) return;
+  buildTableHead();
+  validateAll();
+  renderTable();
+  renderStats();
+  document.getElementById('workspace').style.display='block';
+  document.getElementById('workspace').scrollIntoView({behavior:'smooth',block:'start'});
+  toast('欄位對應完成！已完成驗證，請確認下方明細。');
+});
+
+document.getElementById('remapBtn').addEventListener('click',()=>{
+  document.getElementById('mappingPanel').scrollIntoView({behavior:'smooth',block:'start'});
+});
+
+document.getElementById('applyPresetBtn').addEventListener('click',()=>{
+  const preset=document.getElementById('namePreset').value;
+  rows.forEach(row=>{ row.val.name=applyNamePresetFn(preset,row.orig.name||row.val.name); });
+  validateAll(); renderTable(); renderStats();
+  toast('已整批套用姓名規則，個別列仍可手動微調');
+});
+
+document.getElementById('onlyIssues').addEventListener('change',renderTable);
+document.getElementById('onlyDisabled').addEventListener('change',renderTable);
+
+document.getElementById('tbody').addEventListener('blur',e=>{
+  const t=e.target;
+  if(!t.classList||!t.classList.contains('val')) return;
+  const r=+t.dataset.row, f=t.dataset.field;
+  rows[r].val[f]=t.textContent.trim();
+  validateAll(); renderStats();
+  const tr=document.querySelector(`tr[data-row="${r}"]`);
+  if(tr){
+    tr.className=(rows[r].rowLevel==='error'?'row-error':rows[r].rowLevel==='warn'?'row-warn':'')+(rows[r].disabled?' row-disabled':'');
+    tr.querySelector('td.status').innerHTML=badgeFor(rows[r].rowLevel);
+  }
+},true);
+
+document.getElementById('tbody').addEventListener('click',e=>{
+  const btn=e.target.closest('[data-apply-row]');
+  if(!btn) return;
+  const i=+btn.dataset.applyRow;
+  rows[i].val.name=rows[i].nameSuggestion;
+  validateAll(); renderTable(); renderStats();
+});
+
+document.getElementById('namePreset').addEventListener('change',()=>{
+  rows.forEach(row=>{ row.nameSuggestion=applyNamePresetFn(document.getElementById('namePreset').value,row.orig.name||row.val.name); });
+  renderTable();
+});
+
+/* ===================== 匯出 ===================== */
+
+// 「匯入檔」：使用官方範本，第 1-16 列原封不動，從第 17 列開始寫入使用者資料
+function exportImportFile(){
+  const wb = XLSX.read(TEMPLATE_B64, {type:'base64'});
+  const ws = wb.Sheets[wb.SheetNames[0]];
+  const data = rows.map(row => TEMPLATE_KEYS.map(k => row.val[k] || ''));
+  // origin:'A17' = 從第 17 列第 1 欄開始寫入
+  XLSX.utils.sheet_add_aoa(ws, data, {origin:'A17'});
+  XLSX.writeFile(wb, 'namelist_import_ready.xlsx');
+}
+
+// 「檢查報表」：在範本格式基礎上額外附加「檢查結果」欄，方便內部存查
+function exportReportFile(){
+  const wb = XLSX.read(TEMPLATE_B64, {type:'base64'});
+  const ws = wb.Sheets[wb.SheetNames[0]];
+  // 第 14 列（標題列）追加「檢查結果」欄（第 11 欄 = K 欄）
+  XLSX.utils.sheet_add_aoa(ws, [['檢查結果']], {origin:'K14'});
+  const data = rows.map(row => {
+    const line = TEMPLATE_KEYS.map(k => row.val[k] || '');
+    const allIssues = Object.entries(row.issues).flatMap(([k,arr])=>arr.map(x=>`[${fieldLabel(k)}] ${x.msg}`));
+    line.push(allIssues.join(' / ') || '檢查通過');
+    return line;
+  });
+  XLSX.utils.sheet_add_aoa(ws, data, {origin:'A17'});
+  XLSX.writeFile(wb, 'namelist_check_report.xlsx');
+}
+
+document.getElementById('exportReportBtn').addEventListener('click', exportReportFile);
+document.getElementById('exportImportBtn').addEventListener('click', () => {
+  const errCount = rows.filter(r=>r.rowLevel==='error').length;
+  if(errCount>0){ if(!confirm(`目前仍有 ${errCount} 筆資料存在格式錯誤，匯入系統時這些列會失敗。是否仍要下載目前版本？`)) return; }
+  exportImportFile();
+});
+
+function toast(msg){
+  const el=document.getElementById('toast');
+  el.textContent=msg;el.classList.add('show');
+  setTimeout(()=>el.classList.remove('show'),2800);
+}
+</script>
+</body>
+</html>
